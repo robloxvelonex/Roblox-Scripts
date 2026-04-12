@@ -1,0 +1,561 @@
+-- ==========================================
+-- RIVALS HUB v3.0 (Full Rewrite - Stable)
+-- ==========================================
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local Stats = game:GetService("Stats")
+
+-- Camera: always up to date
+local Camera = workspace.CurrentCamera
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    Camera = workspace.CurrentCamera
+end)
+
+-- ==========================================
+-- GLOBALS
+-- ==========================================
+_G.AimbotActive   = false
+_G.AimbotKey      = Enum.UserInputType.MouseButton2
+_G.AimbotMode     = "Hold"      -- "Hold" or "Toggle"
+_G.AimbotSmooth   = 50    -- 1-100 scale
+_G.AimbotFOV      = 150
+_G.ShowFOV        = false
+_G.AimbotPart     = "Head"
+_G.AimbotToggled  = false
+_G.ChamsActive    = false
+_G.BoxESP         = false
+_G.DistanceESP    = false
+_G.TeamCheck      = true   -- Skip teammates
+
+-- ==========================================
+-- UTILS
+-- ==========================================
+local function IsKeyDown(k)
+    if not k then return false end
+    if typeof(k) ~= "EnumItem" then return false end
+    if k.EnumType == Enum.UserInputType then return UIS:IsMouseButtonPressed(k) end
+    if k.EnumType == Enum.KeyCode then return UIS:IsKeyDown(k) end
+    return false
+end
+
+local function SafeLoad(url, name)
+    local ok, res = pcall(function() return loadstring(game:HttpGet(url))() end)
+    if not ok then warn("[RIVALS HUB] Failed to load " .. name .. ": " .. tostring(res)); return nil end
+    return res
+end
+
+local function NewDraw(kind, props)
+    local ok, obj = pcall(Drawing.new, kind)
+    if not ok then return nil end
+    for k, v in pairs(props) do
+        pcall(function() obj[k] = v end)
+    end
+    return obj
+end
+
+local function HideESP(sk)
+    if sk then
+        if sk.Box    then sk.Box.Visible    = false end
+        if sk.BG     then sk.BG.Visible     = false end
+        if sk.Bar    then sk.Bar.Visible    = false end
+        if sk.Text   then sk.Text.Visible   = false end
+    end
+end
+
+local function CleanChams(char)
+    if char then
+        local h = char:FindFirstChild("RivalsChams")
+        if h then h.Enabled = false end
+    end
+end
+
+-- Team Check: returns true if player is an ENEMY (should be targeted)
+local function IsEnemy(p)
+    if not _G.TeamCheck then return true end -- Team Check off = target everyone
+    -- Same team = not an enemy
+    if LocalPlayer.Team and p.Team and LocalPlayer.Team == p.Team then
+        return false
+    end
+    return true
+end
+
+-- ==========================================
+-- KEY SYSTEM (Original UI - DO NOT CHANGE)
+-- ==========================================
+local KS = { Key = "KEY8e94da5c759XB", GetKeyURL = "https://discord.gg/KTq75NAca6", Title = "RIVALS (2026)" }
+
+local function LoadKeySystem()
+    local gui = game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+    local old = gui:FindFirstChild("RIVALSKeySystem")
+    if old then old:Destroy() end
+
+    local done = Instance.new("BindableEvent")
+
+    local SG = Instance.new("ScreenGui"); SG.Name = "RIVALSKeySystem"; SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; SG.Parent = gui
+
+    local F = Instance.new("Frame"); F.Parent = SG; F.AnchorPoint = Vector2.new(0.5,0.5); F.BackgroundColor3 = Color3.fromRGB(25,25,25); F.Position = UDim2.new(0.5,0,0.5,0); F.Size = UDim2.new(0,350,0,220)
+    Instance.new("UICorner", F).CornerRadius = UDim.new(0,8)
+    local stroke = Instance.new("UIStroke", F); stroke.Color = Color3.fromRGB(50,50,50); stroke.Thickness = 1
+
+    local title = Instance.new("TextLabel", F); title.BackgroundTransparency = 1; title.Position = UDim2.new(0,0,0,18); title.Size = UDim2.new(1,0,0,30); title.Font = Enum.Font.GothamBold; title.Text = KS.Title; title.TextColor3 = Color3.fromRGB(255,255,255); title.TextSize = 20
+    local sub = Instance.new("TextLabel", F); sub.BackgroundTransparency = 1; sub.Position = UDim2.new(0,0,0,48); sub.Size = UDim2.new(1,0,0,20); sub.Font = Enum.Font.Gotham; sub.Text = "KEY SYSTEM"; sub.TextColor3 = Color3.fromRGB(150,150,150); sub.TextSize = 13
+
+    local box = Instance.new("TextBox", F); box.BackgroundColor3 = Color3.fromRGB(35,35,35); box.Position = UDim2.new(0.5,-125,0,85); box.Size = UDim2.new(0,250,0,35); box.Font = Enum.Font.Gotham; box.PlaceholderText = "Enter key here..."; box.Text = ""; box.TextColor3 = Color3.fromRGB(255,255,255); box.TextSize = 14; box.ClearTextOnFocus = false
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0,5)
+    local bs = Instance.new("UIStroke", box); bs.Color = Color3.fromRGB(70,70,70)
+
+    local sbtn = Instance.new("TextButton", F); sbtn.BackgroundColor3 = Color3.fromRGB(0,120,255); sbtn.Position = UDim2.new(0.5,-125,0,140); sbtn.Size = UDim2.new(0,120,0,35); sbtn.Font = Enum.Font.GothamBold; sbtn.Text = "Submit"; sbtn.TextColor3 = Color3.fromRGB(255,255,255); sbtn.TextSize = 14
+    Instance.new("UICorner", sbtn).CornerRadius = UDim.new(0,5)
+
+    local gbtn = Instance.new("TextButton", F); gbtn.BackgroundColor3 = Color3.fromRGB(50,50,50); gbtn.Position = UDim2.new(0.5,5,0,140); gbtn.Size = UDim2.new(0,120,0,35); gbtn.Font = Enum.Font.GothamBold; gbtn.Text = "Get Key"; gbtn.TextColor3 = Color3.fromRGB(255,255,255); gbtn.TextSize = 14
+    Instance.new("UICorner", gbtn).CornerRadius = UDim.new(0,5)
+
+    local xbtn = Instance.new("TextButton", F); xbtn.BackgroundTransparency = 1; xbtn.Position = UDim2.new(1,-30,0,5); xbtn.Size = UDim2.new(0,25,0,25); xbtn.Font = Enum.Font.GothamBold; xbtn.Text = "X"; xbtn.TextColor3 = Color3.fromRGB(150,150,150); xbtn.TextSize = 16
+    xbtn.MouseButton1Click:Connect(function() SG:Destroy() end)
+
+    sbtn.MouseButton1Click:Connect(function()
+        if box.Text == KS.Key then
+            sbtn.Text = "Verified!"; sbtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
+            task.wait(0.5); SG:Destroy(); done:Fire(true)
+        else
+            sbtn.Text = "Invalid!"; sbtn.BackgroundColor3 = Color3.fromRGB(200,0,0)
+            task.wait(1); sbtn.Text = "Submit"; sbtn.BackgroundColor3 = Color3.fromRGB(0,120,255)
+        end
+    end)
+    gbtn.MouseButton1Click:Connect(function()
+        if setclipboard then setclipboard(KS.GetKeyURL); gbtn.Text = "Copied!" end
+        task.wait(1.5); gbtn.Text = "Get Key"
+    end)
+
+    task.spawn(function()
+        local h = 0
+        while SG.Parent do
+            h = (h + 1/400) % 1
+            local c = Color3.fromHSV(h, 1, 1)
+            stroke.Color = c; title.TextColor3 = c
+            task.wait()
+        end
+    end)
+
+    done.Event:Wait()
+end
+LoadKeySystem()
+
+-- ==========================================
+-- WATERMARK
+-- ==========================================
+local function InitWatermark()
+    local gui = (gethui and gethui()) or game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+    if gui:FindFirstChild("RivalsWM") then gui.RivalsWM:Destroy() end
+
+    local sg = Instance.new("ScreenGui", gui)
+    sg.Name = "RivalsWM"; sg.ResetOnSpawn = false; sg.DisplayOrder = 999
+
+    local fr = Instance.new("Frame", sg)
+    fr.BackgroundColor3 = Color3.fromRGB(15,15,15)
+    fr.BackgroundTransparency = 0.15
+    fr.AnchorPoint = Vector2.new(1, 0)
+    fr.Position = UDim2.new(1, -12, 0, 12)
+    fr.Size = UDim2.new(0, 0, 0, 28)
+    fr.AutomaticSize = Enum.AutomaticSize.X
+    Instance.new("UICorner", fr).CornerRadius = UDim.new(0, 6)
+    local wstroke = Instance.new("UIStroke", fr); wstroke.Thickness = 1
+
+    local layout = Instance.new("UIListLayout", fr)
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    local pad = Instance.new("UIPadding", fr)
+    pad.PaddingLeft = UDim.new(0, 8); pad.PaddingRight = UDim.new(0, 8)
+
+    -- Main info label
+    local lbl = Instance.new("TextLabel", fr)
+    lbl.BackgroundTransparency = 1; lbl.AutomaticSize = Enum.AutomaticSize.X
+    lbl.Font = Enum.Font.GothamBold; lbl.TextColor3 = Color3.fromRGB(255,255,255)
+    lbl.TextSize = 13; lbl.Text = ""
+
+    -- Separator
+    local sep = Instance.new("TextLabel", fr)
+    sep.BackgroundTransparency = 1; sep.Size = UDim2.new(0, 6, 1, 0)
+    sep.Font = Enum.Font.Gotham; sep.Text = ""; sep.TextSize = 13
+
+    -- Lock / Unlock button
+    local lockBtn = Instance.new("TextButton", fr)
+    lockBtn.BackgroundTransparency = 1
+    lockBtn.Size = UDim2.new(0, 22, 1, 0)
+    lockBtn.Font = Enum.Font.GothamBold
+    lockBtn.Text = "🔒"
+    lockBtn.TextSize = 14
+    lockBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
+
+    -- Dragging state
+    local locked = true
+    local dragging, dragStart, frameStart = false, nil, nil
+
+    lockBtn.MouseButton1Click:Connect(function()
+        locked = not locked
+        lockBtn.Text = locked and "🔒" or "🔓"
+        lockBtn.TextColor3 = locked and Color3.fromRGB(180,180,180) or Color3.fromRGB(255, 200, 60)
+    end)
+
+    fr.InputBegan:Connect(function(input)
+        if locked then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            frameStart = fr.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if dragging and not locked and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            fr.Position = UDim2.new(
+                frameStart.X.Scale, frameStart.X.Offset + delta.X,
+                frameStart.Y.Scale, frameStart.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    -- Executor detection
+    local function GetExecutor()
+        if identifyexecutor then return identifyexecutor() end
+        if getexecutorname  then return getexecutorname()  end
+        if EXECUTOR_NAME    then return tostring(EXECUTOR_NAME) end
+        -- Try known executor globals
+        if syn then return "Synapse X" end
+        if KRNL_LOADED then return "Krnl" end
+        if pebc then return "Script-Ware" end
+        if fluxus then return "Fluxus" end
+        return "Executor"
+    end
+    local execName = GetExecutor()
+
+    local fC, fD = 0, 0
+    RS.RenderStepped:Connect(function() fC += 1 end)
+
+    task.spawn(function()
+        while sg.Parent do
+            fD = fC * 2; fC = 0
+            local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+            lbl.Text = string.format("%s  |  FPS: %d  |  Ping: %d ms  |  %s", LocalPlayer.Name, fD, ping, execName)
+            task.wait(0.5)
+        end
+    end)
+
+    task.spawn(function()
+        local h = 0
+        while sg.Parent do
+            h = (h + 1/600) % 1
+            wstroke.Color = Color3.fromHSV(h, 0.8, 1)
+            task.wait()
+        end
+    end)
+end
+InitWatermark()
+
+-- ==========================================
+-- FLUENT UI
+-- ==========================================
+local Fluent = SafeLoad("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua", "Fluent")
+if not Fluent then return end
+
+local Window = Fluent:CreateWindow({
+    Title = "RIVALS HUB (2026)",
+    SubTitle = "by angel_engine7",
+    TabWidth = 150,
+    Size = UDim2.fromOffset(550, 440),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.Insert
+})
+
+local Tabs = {
+    Combat   = Window:AddTab({Title = "AIMBOT",   Icon = "target"}),
+    ESP      = Window:AddTab({Title = "ESP",      Icon = "users"}),
+    Settings = Window:AddTab({Title = "SETTINGS", Icon = "settings"}),
+}
+
+-- COMBAT TAB
+Tabs.Combat:AddToggle("AimbotToggle", {
+    Title = "Enable Aimbot", Default = false,
+    Callback = function(v) _G.AimbotActive = v end
+})
+Tabs.Combat:AddDropdown("AimMode", {
+    Title = "Aim Mode", Values = {"Hold", "Toggle"}, Default = "Hold",
+    Callback = function(v) _G.AimbotMode = v; _G.AimbotToggled = false end
+})
+Tabs.Combat:AddKeybind("AimbotKey", {
+    Title = "Aimbot Key", Mode = "Hold", Default = "MouseButton2",
+    Callback = function(k) _G.AimbotKey = k end
+})
+Tabs.Combat:AddSlider("AimbotSmooth", {
+    Title = "Smoothing", Default = 50, Min = 1, Max = 100, Rounding = 0,
+    Callback = function(v) _G.AimbotSmooth = v end
+})
+Tabs.Combat:AddToggle("FovToggle", {
+    Title = "Show FOV Circle", Default = false,
+    Callback = function(v) _G.ShowFOV = v end
+})
+Tabs.Combat:AddSlider("FovSize", {
+    Title = "FOV Radius", Default = 150, Min = 50, Max = 600, Rounding = 0,
+    Callback = function(v) _G.AimbotFOV = v end
+})
+Tabs.Combat:AddDropdown("AimPart", {
+    Title = "Target Part", Values = {"Head", "Torso", "HumanoidRootPart"}, Default = "Head",
+    Callback = function(v) _G.AimbotPart = v end
+})
+
+-- ESP TAB
+Tabs.ESP:AddToggle("ChamsToggle", {
+    Title = "Player Chams", Default = false,
+    Callback = function(v) _G.ChamsActive = v end
+})
+Tabs.ESP:AddToggle("BoxToggle", {
+    Title = "Box", Default = false,
+    Callback = function(v) _G.BoxESP = v end
+})
+Tabs.ESP:AddToggle("DistToggle", {
+    Title = "Distance", Default = false,
+    Callback = function(v) _G.DistanceESP = v end
+})
+Tabs.ESP:AddToggle("TeamCheckToggle", {
+    Title = "Team Check", Default = true,
+    Callback = function(v) _G.TeamCheck = v end
+})
+
+-- ==========================================
+-- ENGINE
+-- ==========================================
+local Skeletons = {}
+local VisCache  = {}
+
+-- FOV Circle
+local FovCircle = NewDraw("Circle", {
+    Thickness = 1.5,
+    Color = Color3.fromRGB(255, 255, 255),
+    Filled = false,
+    Transparency = 0.6,
+    Visible = false,
+})
+
+-- Raycast: is target visible?
+local function IsVisible(origin, target, char)
+    local lc = LocalPlayer.Character
+    local filter = {char}
+    if lc then table.insert(filter, lc) end
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = filter
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local dir = target - origin
+    local ray = workspace:Raycast(origin, dir, params)
+    -- No hit = visible. Hit something transparent/non-collidable = still visible
+    if not ray then return true end
+    return (ray.Instance.Transparency > 0.5 or not ray.Instance.CanCollide)
+end
+
+-- Get closest player to mouse within FOV
+local function GetTarget()
+    local best, bestDist = nil, _G.AimbotFOV
+    local mouse = UIS:GetMouseLocation()
+    local cam   = Camera
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LocalPlayer then continue end
+        if not IsEnemy(p) then continue end  -- Skip teammates
+        local char = p.Character
+        if not char then continue end
+        local part = char:FindFirstChild(_G.AimbotPart) or char:FindFirstChild("HumanoidRootPart")
+        if not part then continue end
+        local hum = char:FindFirstChild("Humanoid")
+        if not hum or hum.Health <= 0 then continue end
+        local screen, onScreen = cam:WorldToViewportPoint(part.Position)
+        if not onScreen then continue end
+        local dist2D = (Vector2.new(screen.X, screen.Y) - mouse).Magnitude
+        if dist2D < bestDist then
+            if IsVisible(cam.CFrame.Position, part.Position, char) then
+                bestDist = dist2D
+                best = part
+            end
+        end
+    end
+    return best
+end
+
+-- Toggle input for aimbot
+UIS.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if _G.AimbotMode ~= "Toggle" then return end
+    local matchMouse = input.UserInputType == _G.AimbotKey
+    local matchKey   = (typeof(_G.AimbotKey) == "EnumItem" and _G.AimbotKey.EnumType == Enum.KeyCode and input.KeyCode == _G.AimbotKey)
+    if matchMouse or matchKey then
+        _G.AimbotToggled = not _G.AimbotToggled
+    end
+end)
+
+-- Visibility background updater for Chams (runs every 0.12s)
+task.spawn(function()
+    while true do
+        task.wait(0.12)
+        if not _G.ChamsActive then continue end
+        local cam = Camera
+        local origin = cam.CFrame.Position
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == LocalPlayer then continue end
+            local char = p.Character
+            if not char then VisCache[p] = false; continue end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                VisCache[p] = IsVisible(origin, hrp.Position, char)
+            else
+                VisCache[p] = false
+            end
+        end
+    end
+end)
+
+-- Player cleanup
+Players.PlayerRemoving:Connect(function(p)
+    local sk = Skeletons[p]
+    if sk then
+        if sk.Box   then pcall(function() sk.Box:Remove()   end) end
+        if sk.BG    then pcall(function() sk.BG:Remove()    end) end
+        if sk.Bar   then pcall(function() sk.Bar:Remove()   end) end
+        if sk.Text  then pcall(function() sk.Text:Remove()  end) end
+        Skeletons[p] = nil
+    end
+    VisCache[p] = nil
+end)
+
+-- Main render loop
+RS.RenderStepped:Connect(function()
+    local cam = Camera
+    if not cam then return end
+
+    -- FOV circle
+    FovCircle.Visible  = _G.ShowFOV
+    FovCircle.Radius   = _G.AimbotFOV
+    FovCircle.Position = UIS:GetMouseLocation()
+
+    -- Aimbot
+    if _G.AimbotActive then
+        local firing = false
+        if _G.AimbotMode == "Hold" then
+            firing = IsKeyDown(_G.AimbotKey)
+        else
+            firing = _G.AimbotToggled
+        end
+        if firing then
+            local t = GetTarget()
+            if t then
+                local goal = CFrame.lookAt(cam.CFrame.Position, t.Position)
+                -- Map 1-100 to lerp factor: 100 = instant (1.0), 1 = very soft (~0.01)
+                local factor = _G.AimbotSmooth / 100
+                if factor >= 0.99 then
+                    cam.CFrame = goal  -- Instant snap at max
+                else
+                    cam.CFrame = cam.CFrame:Lerp(goal, factor)
+                end
+            end
+        end
+    end
+
+    -- ESP per player
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LocalPlayer then continue end
+        local isEnemy = IsEnemy(p)
+
+        -- Create drawings for this player if missing
+        if not Skeletons[p] then
+            Skeletons[p] = {
+                Box  = NewDraw("Square", {Thickness=1, Color=Color3.fromRGB(255,255,255), Visible=false}),
+                BG   = NewDraw("Square", {Thickness=0, Color=Color3.fromRGB(0,0,0), Filled=true, Visible=false, Transparency=0.55}),
+                Bar  = NewDraw("Square", {Thickness=0, Color=Color3.fromRGB(0,255,0), Filled=true, Visible=false}),
+                Text = NewDraw("Text",   {Size=12, Center=true, Outline=true, Color=Color3.fromRGB(255,255,255), Visible=false}),
+            }
+        end
+
+        local sk   = Skeletons[p]
+        local char = p.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local hum  = char and char:FindFirstChild("Humanoid")
+
+        -- Hide everything if character is gone / dead OR teammate
+        if not hrp or not hum or hum.Health <= 0 or not isEnemy then
+            HideESP(sk); CleanChams(char); continue
+        end
+
+        local rootPos        = hrp.Position
+        local screen, onScr  = cam:WorldToViewportPoint(rootPos)
+
+        -- Box ESP + Health bar
+        if _G.BoxESP and onScr then
+            local topPos = cam:WorldToViewportPoint((hrp.CFrame * CFrame.new(0, 3,    0)).Position)
+            local botPos = cam:WorldToViewportPoint((hrp.CFrame * CFrame.new(0, -3.5, 0)).Position)
+            local h = math.abs(topPos.Y - botPos.Y)
+            local w = h / 1.8
+            local left = topPos.X - w / 2
+
+            sk.Box.Position = Vector2.new(left, topPos.Y)
+            sk.Box.Size     = Vector2.new(w, h)
+            sk.Box.Visible  = true
+
+            -- Health bar (right side)
+            local hPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+            local barX  = left + w + 4
+            sk.BG.Position  = Vector2.new(barX, topPos.Y)
+            sk.BG.Size      = Vector2.new(3, h)
+            sk.BG.Visible   = true
+            sk.Bar.Position = Vector2.new(barX, topPos.Y + h * (1 - hPct))
+            sk.Bar.Size     = Vector2.new(3, h * hPct)
+            sk.Bar.Color    = Color3.fromHSV(hPct * 0.33, 1, 1)
+            sk.Bar.Visible  = true
+        else
+            sk.Box.Visible = false; sk.BG.Visible = false; sk.Bar.Visible = false
+        end
+
+        -- Distance ESP
+        if _G.DistanceESP and onScr then
+            local dist = (cam.CFrame.Position - rootPos).Magnitude
+            sk.Text.Position = Vector2.new(screen.X, screen.Y)
+            sk.Text.Text     = string.format("[%d m]", dist)
+            sk.Text.Visible  = true
+        else
+            sk.Text.Visible = false
+        end
+
+        -- Chams (Highlight)
+        if _G.ChamsActive then
+            local hi = char:FindFirstChild("RivalsChams")
+            if not hi then hi = Instance.new("Highlight", char); hi.Name = "RivalsChams" end
+            hi.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hi.Enabled   = true
+            local isVis  = VisCache[p] == true
+            local col    = isVis and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+            hi.FillColor        = col
+            hi.OutlineColor     = col
+            hi.FillTransparency = 0.5
+        else
+            CleanChams(char)
+        end
+    end
+end)
+
+-- ==========================================
+-- SETTINGS TAB
+-- ==========================================
+local IM = SafeLoad("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua", "InterfaceManager")
+if IM then
+    IM:SetLibrary(Fluent)
+    IM:SetFolder("RivalsHub_v3")
+    IM:BuildInterfaceSection(Tabs.Settings)
+end
+
+Window:SelectTab(1)
+Fluent:Notify({ Title = "RIVALS HUB v3.0", Content = "All systems loaded successfully.", Duration = 5 })
